@@ -1,6 +1,6 @@
 ---
 name: postiz-marketing-pipeline
-version: 2.2.0
+version: 2.3.0
 description: End-to-end short-form marketing pipeline for self-hosted Postiz - covers Postiz API automation (auth, scheduling, in-place media swap, multi-channel inventory), Remotion + HyperFrames video production (app demos and stock-footage overlays), AI video generation (Veo 2.0/3.0, Imagen 4), free-license stock sourcing (Pexels/Pixabay), ElevenLabs Sarah voice, 3-input and 6-input ffmpeg audio mixing, WC-26 branded design system, YouTube description optimization, cross-platform description adaptation, personal brand integration, publishing schedule templates, quality rules for professional output, and the anti-patterns we learned the hard way (cross-posting brand pollution, Right of Publicity violations, LLM-fabricated tournament facts). Use when scheduling posts via the Postiz REST API, building short-form ad creative for TikTok/Reels/Shorts/X/LinkedIn, crafting YouTube descriptions and metadata, producing video with HyperFrames or Remotion, or coordinating multi-channel launch waves.
 license: MIT
 keywords:
@@ -47,7 +47,8 @@ Activate when the user wants to:
 
 - Hosted Postiz SaaS at `postiz.com` (this skill is tuned for self-hosted, but the API surface is identical -- only the base URL changes).
 - LinkedIn Company Pages -- Postiz only handles personal LinkedIn. Use Blotato or post manually.
-- TikTok scheduling -- Postiz cannot schedule TikTok directly. Use the `tiktokpost` skill for browser-driven posting.
+- TikTok scheduling -- Postiz cannot schedule TikTok directly. **Use Blotato API** (`POST /v2/posts` with `targetType: "tiktok"`); the `tiktokpost` browser-skill is the legacy fallback only.
+- **X / Twitter scheduling -- Postiz X support was removed (2026-05-15). All X/Twitter posts MUST go through Blotato API** (`POST /v2/posts` with `targetType: "twitter"`). See "Platform routing matrix" below.
 - Long-form (>3 min) YouTube -- this skill is short-form only.
 - Paid-ad campaign management (Google/Meta Ads Manager). The video assets are paid-placement-ready; the ops are out of scope.
 
@@ -594,26 +595,85 @@ Optimized posting schedule based on engagement data across 10 channels.
 
 ### Platform-specific timing overrides
 
-- **X/Twitter**: Can post any day, engagement is less time-sensitive. Best: Tuesday-Thursday 9-11 AM ET.
-- **TikTok**: Not schedulable via Postiz. Use `tiktokpost` skill. Best: Thursday-Saturday 7-9 PM ET.
+- **X/Twitter**: Can post any day, engagement is less time-sensitive. Best: Tuesday-Thursday 9-11 AM ET. **Routes via Blotato (Postiz X removed 2026-05-15).**
+- **TikTok**: Routes via Blotato (`POST /v2/posts`, `targetType:"tiktok"`). Best: Thursday-Saturday 7-9 PM ET.
 - **Telegram**: Immediate delivery (no algorithm), so timing matters less. Batch with YouTube Shorts.
+
+## Platform routing matrix (UPDATED 2026-05-15)
+
+The single biggest gotcha in this pipeline: **which platform goes through which service.** Get this wrong and posts silently fail or hit the wrong account.
+
+| Platform | Service | Endpoint | Why |
+|---|---|---|---|
+| LinkedIn (personal) | **Postiz** | `POST /api/public/v1/posts` w/ `who_can_reply_post` n/a; settings `{}` | OAuth working since 2026-05-03 |
+| LinkedIn (Company Page) | manual / Blotato | n/a | Postiz only handles personal LI |
+| **X / Twitter (all accounts)** | **Blotato (mandatory)** | `POST /v2/posts` w/ `targetType:"twitter"` | **Postiz X integration removed 2026-05-15.** Every X handle goes through Blotato. |
+| Instagram (personal/business) | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {post_type:"post"}` | Instagram-standalone or Instagram (FB Business) providers |
+| Facebook Pages | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {}` | Personal FB profile not supported — only Pages |
+| Threads | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {}` | OAuth tied to IG identity |
+| **TikTok (all accounts)** | **Blotato (mandatory)** | `POST /v2/posts` w/ `targetType:"tiktok"` | Bypasses TikTok app-review approval. `tiktokpost` browser-skill is legacy fallback only |
+| YouTube (Shorts + long-form) | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {type:"public"\|"private"\|"unlisted", title:"...", tags:[]}` | Multi-channel inventory |
+| Telegram | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {}` | Anton AI Power channel |
+| Discord | **Postiz** | `POST /api/public/v1/posts` w/ `settings: {channel:"#channel-name"}` | Requires `channel` field |
+| Pinterest | **Postiz** | `POST /api/public/v1/posts` | Business accounts only |
+| Bluesky | **Postiz** | `POST /api/public/v1/posts` | n/a |
+| dev.to | **Postiz** | n/a | Long-form fallback |
+
+**Quick decision rule:**
+> If platform == "tiktok" OR platform == "x"/"twitter" → use **Blotato**.
+> Everything else → use **Postiz**.
+
+## Postiz schema gotchas (per-platform required `settings`)
+
+Every Postiz `POST /api/public/v1/posts` payload MUST have:
+- `type: "schedule"`
+- `date: "ISO8601"`
+- `shortLink: false`
+- `tags: []` (top-level, NOT inside posts[].tags)
+- `posts: [{integration: {id}, value: [{content, image:[{id, path}]}], settings: <platform-specific>}]`
+
+Platform-specific `settings` (omit field → BadRequest 400):
+
+| Platform | Required `settings` keys |
+|---|---|
+| LinkedIn | `{}` (empty OK) |
+| Instagram (post or standalone) | `{"post_type": "post"}` (or `"story"`) |
+| Facebook | `{}` (empty OK) |
+| Threads | `{}` (empty OK) |
+| Telegram | `{}` (empty OK) |
+| Discord | `{"channel": "#channel-name"}` (required) |
+| YouTube | `{"title": "<60chars", "type": "public"\|"private"\|"unlisted", "tags": [{label, value}, ...]}` |
+| Pinterest | `{"title": "...", "board": "<board-name>"}` |
+
+**For media:** `image[0]` MUST be `{id: <postiz_upload_id>, path: <postiz_cdn_url>}`. The `id` field is non-optional — Postiz rejects `{path: ...}` alone with "image.0.id must be a string".
 
 ## Social Channel Inventory
 
 ### Connected via Postiz (self-hosted at postiz.easychamp.com)
 - Anton YouTube (@AntonAbyzov)
-- Anton Instagram (@aabyzov)
-- Anton X/Twitter (@aabyzov) — connected directly, NOT via Blotato
+- Anton Instagram (@aabyzov)  *(instagram-standalone provider)*
 - Anton LinkedIn (personal)
 - Anton Telegram (@antonaipower)
 - Anton Threads (@aabyzov)
 - EasyChamp YouTube (@easychampinc)
 - EasyChamp Instagram (@easychamp_inc)
 - EasyChamp Facebook (page)
-- EasyChamp Discord (#announcements)
+- EasyChamp Discord (channel TBD per post)
+- Skillup Football YouTube (@skillupfootballapplication)
+- Sketchmate IG / FB / YouTube
+- Soothbee IG / FB / X(Soothbee) / YT / Pinterest
 
-### NOT connected via Postiz (need Blotato or manual)
-- LinkedIn Company Pages — Postiz only handles personal LinkedIn
-- TikTok — use `tiktokpost` skill for browser-driven posting
-- SkillUp Football YouTube — REMOVED from WC26 campaign (brand pollution risk)
-- Sketchmate YouTube, SoothBee FB/IG/X/YT, Pinterest babyanticry — wrong audience for WC26
+### Routes via Blotato (NOT Postiz)
+- **Anton X/Twitter (@aabyzov)** — accountId `18001` (Postiz X removed 2026-05-15)
+- EasyChamp X handles: `@EasyChampInc` (18005), `@EasyChampeSport` (18007), `@easychampfcpro` (18008)
+- Anton TikTok (@antonabyzov, 40681)
+- SkillUp Football TikTok (@footballskillup, 41891)
+- EasyChamp TikTok (@easychamp_inc, 40691)
+- Sketchmate TikTok (@sketchmate.net, 40690)
+- SoothBee TikTok (@soothbee, 40825)
+- Anton LinkedIn via Blotato (20855) — secondary/redundant; Postiz is the primary
+
+### NOT connected (need OAuth or new app)
+- Anton **personal Facebook** — NOT in Postiz. Connect via UI → +Add Channel → Facebook → OAuth.
+- LinkedIn Company Pages — neither Postiz nor Blotato handles these
+- Pinterest (Anton personal / EasyChamp) — only `babyanticry` (SoothBee) is connected
