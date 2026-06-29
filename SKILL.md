@@ -1,6 +1,6 @@
 ---
 name: postiz-marketing-pipeline
-version: 2.3.0
+version: 2.4.0
 description: End-to-end short-form marketing pipeline for self-hosted Postiz - covers Postiz API automation (auth, scheduling, in-place media swap, multi-channel inventory), Remotion + HyperFrames video production (app demos and stock-footage overlays), AI video generation (Veo 2.0/3.0, Imagen 4), free-license stock sourcing (Pexels/Pixabay), ElevenLabs Sarah voice, 3-input and 6-input ffmpeg audio mixing, WC-26 branded design system, YouTube description optimization, cross-platform description adaptation, personal brand integration, publishing schedule templates, quality rules for professional output, and the anti-patterns we learned the hard way (cross-posting brand pollution, Right of Publicity violations, LLM-fabricated tournament facts). Use when scheduling posts via the Postiz REST API, building short-form ad creative for TikTok/Reels/Shorts/X/LinkedIn, crafting YouTube descriptions and metadata, producing video with HyperFrames or Remotion, or coordinating multi-channel launch waves.
 license: MIT
 keywords:
@@ -677,3 +677,46 @@ Platform-specific `settings` (omit field → BadRequest 400):
 - Anton **personal Facebook** — NOT in Postiz. Connect via UI → +Add Channel → Facebook → OAuth.
 - LinkedIn Company Pages — neither Postiz nor Blotato handles these
 - Pinterest (Anton personal / EasyChamp) — only `babyanticry` (SoothBee) is connected
+
+---
+
+# v2.4.0 (2026-06-29) — Rights-safe REAL-STAR pipeline + hard rules
+
+Hard-won on the WC2026 @aabyzov bilingual run. Where these conflict with older "stock-only" guidance, these win.
+
+## 1. Show real stars LEGALLY — the CC-photo lane (the answer to "use real footage")
+
+The owner will repeatedly push to rip real broadcast/social match video ("it's on TikTok, just add labels"). **Do not.** It is the single channel-killer:
+- FIFA owns the broadcast copyright. YouTube Content ID + Meta Rights Manager fingerprint-match on **upload**, before any views. **3 copyright strikes in 90 days terminates the channel + all linked channels**, and copyright-terminated creators are barred from YouTube reinstatement. DOJ "Operation Offsides" seized ~400 World Cup piracy domains in June 2026.
+- Adding labels/arrows/graphics **does not** cleanse ripped footage (reproduce-with-minor-changes).
+- **Duet/Stitch/native reshare is NOT a monetized lane:** TikTok won't monetize reposts even with credit; YouTube flags stitch-reposts as "inauthentic content" → whole-channel demonetization; the embedded footage/music still gets Content-ID'd. **Reshare ≠ license. Credit ≠ license.**
+
+**The legal way to show real players** (`scripts/fetch_cc_photos.py`): pull real photos under FREE licenses (CC BY / CC BY-SA / PD) from the Wikimedia Commons API. Skip `(cropped)` near-duplicates; prioritize current-tournament titles; send a `User-Agent`; `sleep ≥1.3s` between downloads (429s otherwise). Confirmed rich coverage for current WC stars (e.g. Dembélé/Mbappé "France v Senegal 16 June 2026" by Bryan Berlin, CC BY-SA 4.0; Messi by Sebas, CC BY 3.0; Pulisic, Vinícius).
+- **Attribution is MANDATORY** (CC BY/BY-SA): append `Photo: <author> / Wikimedia Commons, CC BY-SA 4.0` to every caption using a CC photo.
+- **Right of publicity:** editorial commentary about the player = nominative fair use (OK). Never use a likeness to sell a product; **never AI-generate a real player's face.**
+- **Hierarchy (best → fallback):** CC photos animated → licensed editorial stills (Getty/Imagn, paid, NON-match only) → your own footage → generic AI b-roll (no likeness/logos) → original diagrams.
+
+## 2. Make stills feel like VIDEO + never repeat footage (hard rules)
+
+- **NEVER reuse a b-roll bed across clips** — it reads as repeated/mirrored images and depresses reach. Generate **unique fresh footage per clip even if it costs more** (`gen_beds_v2.py` builds a distinct-scene library: attack-run, crowd-roar, keeper-dive, boots-on-ball, tunnel-walk, flag-wave…).
+- Static stills alone look weak ("there's no video"). **Intercut CC photos (Ken Burns via ffmpeg `zoompan`, alternate zoom-in/out per photo) WITH real AI b-roll video** for motion, plus a **ducked music bed**. The Remotion comp `FootballPromo` takes **mixed video+photo beds + a `music` prop + VO**; `render_promo.py` cycles beds across beats.
+- **Music:** ElevenLabs Music `POST /v1/music` `{prompt, music_length_ms}` → instrumental bed, ducked ~0.16 under VO. (VO uses `eleven_multilingual_v2` for clean Russian, not turbo.)
+
+## 3. VERIFY before bake (non-negotiable gate)
+
+2-source-verify every headline **score / date / record BEFORE it enters a frame.** This run caught two errors pre-publish: *"Canada won on home soil"* (they played in **Los Angeles**) and *"Messi's 7th World Cup"* (it's his record **6th**, **19** goals). A wrong fact on a viral clip is brand damage. Fix the spec, delete the stale VO, re-render.
+
+## 4. Platform gotchas (each cost real time)
+
+- **Kie** result URLs **403 on plain urllib** (Cloudflare CDN) → download with `curl` + a browser `User-Agent`.
+- **zsh does NOT word-split** unquoted `$var` → use explicit args in shell loops (a `for combo in "a b"` loop silently passed bad args).
+- **Blotato** dedup must key platform `tiktok` (not `twitter`); `GET /v2/accounts` → **401** (derive accounts from `/v2/schedules`); `/v2/media` re-ingest yields a **new uuid each call** → dedup by **(account, caption)**, not media basename.
+- **Scheduled posts fire on REAL wall-clock:** a long async build (Kie + many Remotion renders = hours) means a same-day media swap only catches **future** slots; earlier slots already published. Budget render time into the schedule.
+
+## 5. Spec-driven pipeline (marketing repo `generated-assets/aabyzov-football/`)
+
+`trending-scout workflow → polished-spec workflow → fact-verify → build_from_spec.py (spec = accent, beats, vo_en/ru, footage plan; gen VO + Ken Burns photos + AI beds + music) → schedule_specs.py (Postiz threads/yt/ig/linkedin + Blotato tiktok 40681; per-platform captions; dedup-guarded)`. Add a storyline = one spec entry; it renders RU+EN and schedules everywhere.
+
+## 6. What's actually viral at a World Cup
+
+NOT match highlights — **fan-culture / memes / underdogs** (Norway "Viking Row", Cape Verde keeper Vozinha +14M followers, Merlin the duck, the cyborg-referee meme). Win on **formats**, not footage. Bilingual RU+EN; hook payoff <1s; debate-bait CTAs.
