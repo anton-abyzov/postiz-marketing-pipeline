@@ -15,7 +15,7 @@ http_status=$(curl -sS -o /dev/null -w "%{http_code}" \
   -H "User-Agent: $UA" \
   -H "Content-Type: application/json" \
   -X POST "$POSTIZ_BASE_URL/api/auth/login" \
-  -d "{\"email\":\"$POSTIZ_EMAIL\",\"password\":\"$POSTIZ_PASSWORD\",\"providerName\":\"LOCAL\"}")
+  -d "{\"email\":\"$POSTIZ_EMAIL\",\"password\":\"$POSTIZ_PASSWORD\",\"provider\":\"LOCAL\"}")
 
 if [[ "$http_status" != "201" && "$http_status" != "200" ]]; then
   echo "Login failed: HTTP $http_status" >&2
